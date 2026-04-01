@@ -1,7 +1,8 @@
 import { resolveAgentSkillsFilter } from "../../agents/agent-scope.js";
-import { buildWorkspaceSkillSnapshot, type SkillSnapshot } from "../../agents/skills.js";
 import { matchesSkillFilter } from "../../agents/skills/filter.js";
 import { getSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
+import type { SkillSnapshot } from "../../agents/skills/types.js";
+import { buildWorkspaceSkillSnapshot } from "../../agents/skills/workspace.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 

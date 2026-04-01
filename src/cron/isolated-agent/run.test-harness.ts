@@ -70,7 +70,7 @@ vi.mock("../../agents/agent-scope.js", () => ({
   resolveAgentSkillsFilter: resolveAgentSkillsFilterMock,
 }));
 
-vi.mock("../../agents/skills.js", () => ({
+vi.mock("../../agents/skills/workspace.js", () => ({
   buildWorkspaceSkillSnapshot: buildWorkspaceSkillSnapshotMock,
 }));
 
