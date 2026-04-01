@@ -144,11 +144,8 @@ vi.mock("../../agents/subagent-registry.js", () => ({
   listDescendantRunsForRequester: listDescendantRunsForRequesterMock,
 }));
 
-vi.mock("../../agents/cli-runner.js", () => ({
+vi.mock("../../agents/cli-runner.runtime.js", () => ({
   runCliAgent: runCliAgentMock,
-}));
-
-vi.mock("../../agents/cli-session.js", () => ({
   getCliSessionId: getCliSessionIdMock,
   setCliSessionId: vi.fn(),
 }));

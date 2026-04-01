@@ -7,8 +7,6 @@ import {
 } from "../../agents/agent-scope.js";
 import { resolveSessionAuthProfileOverride } from "../../agents/auth-profiles/session-override.js";
 import { resolveBootstrapWarningSignaturesSeen } from "../../agents/bootstrap-budget.js";
-import { runCliAgent } from "../../agents/cli-runner.js";
-import { getCliSessionId, setCliSessionId } from "../../agents/cli-session.js";
 import { lookupContextTokens } from "../../agents/context.js";
 import { resolveCronStyleNow } from "../../agents/current-time.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
@@ -168,6 +166,10 @@ function appendCronDeliveryInstruction(params: {
     return params.commandBody;
   }
   return `${params.commandBody}\n\nReturn your summary as plain text; it will be delivered automatically. If the task explicitly calls for messaging a specific external recipient, note who/where it should go instead of sending it yourself.`.trim();
+}
+
+async function loadCliRunnerRuntime() {
+  return await import("../../agents/cli-runner.runtime.js");
 }
 
 export async function runCronIsolatedAgentTurn(params: {
@@ -496,6 +498,7 @@ export async function runCronIsolatedAgentTurn(params: {
           const bootstrapPromptWarningSignature =
             bootstrapPromptWarningSignaturesSeen[bootstrapPromptWarningSignaturesSeen.length - 1];
           if (isCliProvider(providerOverride, cfgWithAgentDefaults)) {
+            const { getCliSessionId, runCliAgent } = await loadCliRunnerRuntime();
             // Fresh isolated cron sessions must not reuse a stored CLI session ID.
             // Passing an existing ID activates the resume watchdog profile
             // (noOutputTimeoutRatio 0.3, maxMs 180 s) instead of the fresh profile
@@ -716,6 +719,7 @@ export async function runCronIsolatedAgentTurn(params: {
     if (isCliProvider(providerUsed, cfgWithAgentDefaults)) {
       const cliSessionId = finalRunResult.meta?.agentMeta?.sessionId?.trim();
       if (cliSessionId) {
+        const { setCliSessionId } = await loadCliRunnerRuntime();
         setCliSessionId(cronSession.sessionEntry, providerUsed, cliSessionId);
       }
     }
