@@ -48,6 +48,7 @@ export const resolveThinkingDefaultMock = createMock();
 export const runWithModelFallbackMock = createMock();
 export const runEmbeddedPiAgentMock = createMock();
 export const runCliAgentMock = createMock();
+export const lookupCachedContextTokensMock = createMock();
 export const getCliSessionIdMock = createMock();
 export const updateSessionStoreMock = createMock();
 export const resolveCronSessionMock = createMock();
@@ -104,12 +105,16 @@ vi.mock("../../agents/auth-profiles/session-override.js", () => ({
   resolveSessionAuthProfileOverride: resolveSessionAuthProfileOverrideMock,
 }));
 
+vi.mock("../../agents/live-model-switch-error.js", async (importOriginal) => {
+  return await importOriginal<typeof import("../../agents/live-model-switch-error.js")>();
+});
+
 vi.mock("../../agents/pi-embedded.js", () => ({
   runEmbeddedPiAgent: runEmbeddedPiAgentMock,
 }));
 
-vi.mock("../../agents/context.js", () => ({
-  lookupContextTokens: vi.fn().mockReturnValue(128000),
+vi.mock("../../agents/context-cache.js", () => ({
+  lookupCachedContextTokens: lookupCachedContextTokensMock,
 }));
 
 vi.mock("../../agents/date-time.js", async (importOriginal) => {
@@ -168,14 +173,23 @@ vi.mock("../../cli/outbound-send-deps.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../../config/sessions.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../config/sessions.js")>();
+vi.mock("../../config/sessions/paths.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../config/sessions/paths.js")>();
   return {
     ...actual,
-    resolveAgentMainSessionKey: vi.fn().mockReturnValue("main:default"),
     resolveSessionTranscriptPath: vi.fn().mockReturnValue("/tmp/transcript.jsonl"),
+  };
+});
+
+vi.mock("../../config/sessions/store.runtime.js", () => ({
+  updateSessionStore: updateSessionStoreMock,
+}));
+
+vi.mock("../../config/sessions/types.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../config/sessions/types.js")>();
+  return {
+    ...actual,
     setSessionRuntimeModel: vi.fn(),
-    updateSessionStore: updateSessionStoreMock,
   };
 });
 
@@ -334,6 +348,8 @@ export function resetRunCronIsolatedAgentTurnHarness(): void {
   runEmbeddedPiAgentMock.mockResolvedValue(makeDefaultEmbeddedResult());
 
   runCliAgentMock.mockReset();
+  lookupCachedContextTokensMock.mockReset();
+  lookupCachedContextTokensMock.mockReturnValue(undefined);
   getCliSessionIdMock.mockReturnValue(undefined);
 
   updateSessionStoreMock.mockReset();
