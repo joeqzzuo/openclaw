@@ -5,7 +5,6 @@ import {
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
 } from "../../agents/agent-scope.js";
-import { resolveSessionAuthProfileOverride } from "../../agents/auth-profiles/session-override.js";
 import { resolveBootstrapWarningSignaturesSeen } from "../../agents/bootstrap-budget.js";
 import { lookupCachedContextTokens } from "../../agents/context-cache.js";
 import { resolveCronStyleNow } from "../../agents/current-time.js";
@@ -15,7 +14,6 @@ import { resolveNestedAgentLane } from "../../agents/lanes.js";
 import { LiveSessionModelSwitchError } from "../../agents/live-model-switch-error.js";
 import { loadModelCatalog } from "../../agents/model-catalog.js";
 import { runWithModelFallback } from "../../agents/model-fallback.js";
-import { isCliProvider, resolveThinkingDefault } from "../../agents/model-selection.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import {
   countActiveDescendantRuns,
@@ -66,10 +64,24 @@ import { isLikelyInterimCronMessage } from "./subagent-followup.js";
 let sessionStoreRuntimePromise:
   | Promise<typeof import("../../config/sessions/store.runtime.js")>
   | undefined;
+let authProfileRuntimePromise: Promise<typeof import("./run-auth-profile.runtime.js")> | undefined;
+let modelSelectionRuntimePromise:
+  | Promise<typeof import("./run-model-selection.runtime.js")>
+  | undefined;
 
 async function loadSessionStoreRuntime() {
   sessionStoreRuntimePromise ??= import("../../config/sessions/store.runtime.js");
   return await sessionStoreRuntimePromise;
+}
+
+async function loadAuthProfileRuntime() {
+  authProfileRuntimePromise ??= import("./run-auth-profile.runtime.js");
+  return await authProfileRuntimePromise;
+}
+
+async function loadModelSelectionRuntime() {
+  modelSelectionRuntimePromise ??= import("./run-model-selection.runtime.js");
+  return await modelSelectionRuntimePromise;
 }
 
 function resolveNonNegativeNumber(value: number | undefined): number | undefined {
@@ -331,6 +343,7 @@ export async function runCronIsolatedAgentTurn(params: {
   );
   let thinkLevel = jobThink ?? hooksGmailThinking;
   if (!thinkLevel) {
+    const { resolveThinkingDefault } = await loadModelSelectionRuntime();
     thinkLevel = resolveThinkingDefault({
       cfg: cfgWithAgentDefaults,
       provider,
@@ -434,6 +447,7 @@ export async function runCronIsolatedAgentTurn(params: {
   // Resolve auth profile for the session, mirroring the inbound auto-reply path
   // (get-reply-run.ts). Without this, isolated cron sessions fall back to env-var
   // auth which may not match the configured auth-profiles, causing 401 errors.
+  const { resolveSessionAuthProfileOverride } = await loadAuthProfileRuntime();
   const authProfileId = await resolveSessionAuthProfileOverride({
     cfg: cfgWithAgentDefaults,
     provider,
@@ -511,6 +525,7 @@ export async function runCronIsolatedAgentTurn(params: {
           }
           const bootstrapPromptWarningSignature =
             bootstrapPromptWarningSignaturesSeen[bootstrapPromptWarningSignaturesSeen.length - 1];
+          const { isCliProvider } = await loadModelSelectionRuntime();
           if (isCliProvider(providerOverride, cfgWithAgentDefaults)) {
             const { getCliSessionId, runCliAgent } = await loadCliRunnerRuntime();
             // Fresh isolated cron sessions must not reuse a stored CLI session ID.
@@ -731,6 +746,7 @@ export async function runCronIsolatedAgentTurn(params: {
       model: modelUsed,
     });
     cronSession.sessionEntry.contextTokens = contextTokens;
+    const { isCliProvider } = await loadModelSelectionRuntime();
     if (isCliProvider(providerUsed, cfgWithAgentDefaults)) {
       const cliSessionId = finalRunResult.meta?.agentMeta?.sessionId?.trim();
       if (cliSessionId) {

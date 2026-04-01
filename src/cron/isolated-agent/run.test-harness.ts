@@ -90,11 +90,14 @@ vi.mock("../../agents/model-catalog.js", () => ({
 
 vi.mock("../../agents/model-selection.js", () => ({
   getModelRefStatus: getModelRefStatusMock,
-  isCliProvider: isCliProviderMock,
   normalizeModelSelection: normalizeModelSelectionForTest,
   resolveAllowedModelRef: resolveAllowedModelRefMock,
   resolveConfiguredModelRef: resolveConfiguredModelRefMock,
   resolveHooksGmailModel: resolveHooksGmailModelMock,
+}));
+
+vi.mock("./run-model-selection.runtime.js", () => ({
+  isCliProvider: isCliProviderMock,
   resolveThinkingDefault: resolveThinkingDefaultMock,
 }));
 
@@ -102,7 +105,7 @@ vi.mock("../../agents/model-fallback.js", () => ({
   runWithModelFallback: runWithModelFallbackMock,
 }));
 
-vi.mock("../../agents/auth-profiles/session-override.js", () => ({
+vi.mock("./run-auth-profile.runtime.js", () => ({
   resolveSessionAuthProfileOverride: resolveSessionAuthProfileOverrideMock,
 }));
 
