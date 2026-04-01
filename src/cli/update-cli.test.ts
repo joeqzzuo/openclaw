@@ -43,9 +43,13 @@ vi.mock("../infra/update-runner.js", () => ({
   runGatewayUpdate: vi.fn(),
 }));
 
-vi.mock("../infra/openclaw-root.js", () => ({
-  resolveOpenClawPackageRoot: vi.fn(),
-}));
+vi.mock("../infra/openclaw-root.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../infra/openclaw-root.js")>();
+  return {
+    ...actual,
+    resolveOpenClawPackageRoot: vi.fn(),
+  };
+});
 
 vi.mock("../config/config.js", () => ({
   readConfigFileSnapshot: vi.fn(),
