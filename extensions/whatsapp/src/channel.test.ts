@@ -1,7 +1,10 @@
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/routing";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
-import { createWhatsAppPollFixture, expectWhatsAppPollSent } from "openclaw/plugin-sdk/testing";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createWhatsAppPollFixture,
+  expectWhatsAppPollSent,
+} from "../../../src/test-helpers/whatsapp-outbound.js";
 import {
   createDirectoryTestRuntime,
   expectDirectorySurface,
@@ -179,6 +182,23 @@ describe("whatsappPlugin outbound sendMedia", () => {
       }),
     );
     expect(result).toMatchObject({ channel: "whatsapp", messageId: "msg-1" });
+  });
+});
+
+describe("whatsappPlugin outbound resolveTarget", () => {
+  it("delegates direct target normalization to the outbound resolver", () => {
+    const outbound = whatsappPlugin.outbound;
+    if (!outbound?.resolveTarget) {
+      throw new Error("whatsapp outbound resolveTarget is unavailable");
+    }
+
+    expect(
+      outbound.resolveTarget({
+        to: "whatsapp:+15551234567",
+        allowFrom: [],
+        mode: "explicit",
+      }),
+    ).toEqual({ ok: true, to: "+15551234567" });
   });
 });
 
