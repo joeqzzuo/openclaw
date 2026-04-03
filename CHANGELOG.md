@@ -33,7 +33,7 @@ Docs: https://docs.openclaw.ai
 - Matrix/crypto persistence: capture and write the IndexedDB snapshot while holding the snapshot file lock so concurrent gateway and CLI persists cannot overwrite newer crypto state. (#59851) Thanks @al3mart.
 - Telegram/media: keep inbound image attachments readable on upgraded installs where legacy state roots still differ from the managed config-dir media cache. (#59971) Thanks @neeravmakwana.
 - Telegram/local Bot API: thread `channels.telegram.apiRoot` through buffered reply-media and album downloads so self-hosted Bot API file paths stop falling back to `api.telegram.org` and 404ing. (#59544) Thanks @SARAMALI15792.
-- Agents/skills: enforce agent-scoped `skills.policy` during embedded fallback runs, accept implicit `main` policy overrides, and reject conflicting per-agent enable/disable overlaps. (#59992) Thanks @gumadeiras.
+- Agents/skills: add inherited `agents.defaults.skills` allowlists with explicit per-agent replacement via `agents.list[].skills`, and route snapshots, embedded fallbacks, slash-command discovery, and sandbox sync through the same effective skill filter. (#59992) Thanks @gumadeiras.
 
 ## 2026.4.2
 

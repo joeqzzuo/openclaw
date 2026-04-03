@@ -30,7 +30,7 @@ describe("resolveSkillsPromptForRun", () => {
     expect(prompt).toContain("/app/skills/demo-skill/SKILL.md");
   });
 
-  it("applies skills.policy when rebuilding prompt from entries for an agent", () => {
+  it("inherits agents.defaults.skills when rebuilding prompt for an agent", () => {
     const visible: SkillEntry = {
       skill: createFixtureSkill({
         name: "github",
@@ -55,10 +55,11 @@ describe("resolveSkillsPromptForRun", () => {
     const prompt = resolveSkillsPromptForRun({
       entries: [visible, hidden],
       config: {
-        skills: {
-          policy: {
-            globalEnabled: ["github"],
+        agents: {
+          defaults: {
+            skills: ["github"],
           },
+          list: [{ id: "writer" }],
         },
       },
       workspaceDir: "/tmp/openclaw",
@@ -69,8 +70,8 @@ describe("resolveSkillsPromptForRun", () => {
     expect(prompt).not.toContain("/app/skills/hidden-skill/SKILL.md");
   });
 
-  it("honors disabled skillKey overrides when globalEnabled uses the skill name", () => {
-    const mixedIdEntry: SkillEntry = {
+  it("uses agents.list[].skills as a full replacement for defaults", () => {
+    const inheritedEntry: SkillEntry = {
       skill: createFixtureSkill({
         name: "weather",
         description: "Weather",
@@ -79,21 +80,26 @@ describe("resolveSkillsPromptForRun", () => {
         source: "openclaw-workspace",
       }),
       frontmatter: {},
-      metadata: {
-        skillKey: "weather-provider",
-      },
+    };
+    const explicitEntry: SkillEntry = {
+      skill: createFixtureSkill({
+        name: "docs-search",
+        description: "Docs",
+        filePath: "/app/skills/docs-search/SKILL.md",
+        baseDir: "/app/skills/docs-search",
+        source: "openclaw-workspace",
+      }),
+      frontmatter: {},
     };
 
     const prompt = resolveSkillsPromptForRun({
-      entries: [mixedIdEntry],
+      entries: [inheritedEntry, explicitEntry],
       config: {
-        skills: {
-          policy: {
-            globalEnabled: ["weather"],
-            agentOverrides: {
-              writer: { disabled: ["weather-provider"] },
-            },
+        agents: {
+          defaults: {
+            skills: ["weather"],
           },
+          list: [{ id: "writer", skills: ["docs-search"] }],
         },
       },
       workspaceDir: "/tmp/openclaw",
@@ -101,6 +107,7 @@ describe("resolveSkillsPromptForRun", () => {
     });
 
     expect(prompt).not.toContain("/app/skills/weather/SKILL.md");
+    expect(prompt).toContain("/app/skills/docs-search/SKILL.md");
   });
 });
 

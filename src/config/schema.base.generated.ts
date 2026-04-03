@@ -1510,6 +1510,12 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
               workspace: {
                 type: "string",
               },
+              skills: {
+                type: "array",
+                items: {
+                  type: "string",
+                },
+              },
               repoRoot: {
                 type: "string",
               },
@@ -10755,42 +10761,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
               type: "string",
             },
           },
-          policy: {
-            type: "object",
-            properties: {
-              globalEnabled: {
-                type: "array",
-                items: {
-                  type: "string",
-                },
-              },
-              agentOverrides: {
-                type: "object",
-                propertyNames: {
-                  type: "string",
-                },
-                additionalProperties: {
-                  type: "object",
-                  properties: {
-                    enabled: {
-                      type: "array",
-                      items: {
-                        type: "string",
-                      },
-                    },
-                    disabled: {
-                      type: "array",
-                      items: {
-                        type: "string",
-                      },
-                    },
-                  },
-                  additionalProperties: false,
-                },
-              },
-            },
-            additionalProperties: false,
-          },
           load: {
             type: "object",
             properties: {
@@ -12920,31 +12890,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       help: "Per-source broadcast destination list where each key is a source peer ID and the value is an array of destination peer IDs. Keep lists intentional to avoid accidental message amplification.",
       tags: ["advanced"],
     },
-    "skills.policy": {
-      label: "Skills Policy",
-      help: "Runtime skill-scope policy that defines a shared global baseline and per-agent enable/disable overrides. Use this when agents should see different effective skill sets without duplicating skill folders.",
-      tags: ["access"],
-    },
-    "skills.policy.globalEnabled": {
-      label: "Global Enabled Skills",
-      help: "Shared baseline list of skill ids or names enabled for all agents before per-agent overrides are applied. Keep this narrow so specialized agents start from least privilege instead of broad global exposure.",
-      tags: ["access"],
-    },
-    "skills.policy.agentOverrides": {
-      label: "Per-Agent Skill Overrides",
-      help: "Per-agent skill override table keyed by agent id. Use this to enable extra skills for one agent or disable baseline skills for another without changing shared roots or duplicating files.",
-      tags: ["access"],
-    },
-    "skills.policy.agentOverrides.*.enabled": {
-      label: "Agent Enabled Skills",
-      help: "Additional skill ids or names enabled for a specific agent on top of the global baseline. Use this for role-specific capabilities that should not be visible to every agent.",
-      tags: ["access"],
-    },
-    "skills.policy.agentOverrides.*.disabled": {
-      label: "Agent Disabled Skills",
-      help: "Skill ids or names removed from the global baseline for a specific agent. Use this to enforce least privilege for narrow agents even when a broader shared baseline exists.",
-      tags: ["access"],
-    },
     "skills.load.watch": {
       label: "Watch Skills",
       help: "Enable filesystem watching for skill-definition changes so updates can be applied without full process restart. Keep enabled in development workflows and disable in immutable production images.",
@@ -12954,6 +12899,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       label: "Skills Watch Debounce (ms)",
       help: "Debounce window in milliseconds for coalescing rapid skill file changes before reload logic runs. Increase to reduce reload churn on frequent writes, or lower for faster edit feedback.",
       tags: ["performance", "automation"],
+    },
+    "agents.defaults.skills": {
+      label: "Skills",
+      help: "Optional default skill allowlist inherited by agents that omit agents.list[].skills. Omit for unrestricted skills, set [] to give inheriting agents no skills, and remember explicit agents.list[].skills replaces this default instead of merging with it.",
+      tags: ["advanced"],
     },
     "agents.defaults.workspace": {
       label: "Workspace",

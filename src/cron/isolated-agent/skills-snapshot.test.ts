@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const buildWorkspaceSkillSnapshotMock = vi.fn();
 const getSkillsSnapshotVersionMock = vi.fn();
 const resolveAgentSkillsFilterMock = vi.fn();
-const resolveSkillPolicySnapshotMock = vi.fn();
 const getRemoteSkillEligibilityMock = vi.fn();
 
 vi.mock("../../agents/skills.js", () => ({
@@ -24,16 +23,6 @@ vi.mock("../../agents/agent-scope.js", () => ({
   resolveAgentSkillsFilter: resolveAgentSkillsFilterMock,
 }));
 
-vi.mock("../../agents/skills/policy.js", async () => {
-  const actual = await vi.importActual<typeof import("../../agents/skills/policy.js")>(
-    "../../agents/skills/policy.js",
-  );
-  return {
-    ...actual,
-    resolveSkillPolicySnapshot: resolveSkillPolicySnapshotMock,
-  };
-});
-
 vi.mock("../../infra/skills-remote.js", () => ({
   getRemoteSkillEligibility: getRemoteSkillEligibilityMock,
 }));
@@ -45,7 +34,6 @@ describe("resolveCronSkillsSnapshot", () => {
     vi.clearAllMocks();
     getSkillsSnapshotVersionMock.mockReturnValue(0);
     resolveAgentSkillsFilterMock.mockReturnValue(undefined);
-    resolveSkillPolicySnapshotMock.mockReturnValue(undefined);
     getRemoteSkillEligibilityMock.mockReturnValue({
       platforms: [],
       hasBin: () => false,
@@ -54,14 +42,8 @@ describe("resolveCronSkillsSnapshot", () => {
     buildWorkspaceSkillSnapshotMock.mockReturnValue({ prompt: "fresh", skills: [] });
   });
 
-  it("refreshes when the cached policy snapshot changes", () => {
-    resolveSkillPolicySnapshotMock.mockReturnValue({
-      agentId: "writer",
-      globalEnabled: ["github"],
-      agentEnabled: ["docs-search"],
-      agentDisabled: [],
-      effective: ["docs-search", "github"],
-    });
+  it("refreshes when the cached skill filter changes", () => {
+    resolveAgentSkillsFilterMock.mockReturnValue(["docs-search", "github"]);
 
     const result = resolveCronSkillsSnapshot({
       workspaceDir: "/tmp/workspace",
@@ -70,13 +52,7 @@ describe("resolveCronSkillsSnapshot", () => {
       existingSnapshot: {
         prompt: "old",
         skills: [{ name: "github" }],
-        policy: {
-          agentId: "writer",
-          globalEnabled: ["github"],
-          agentEnabled: [],
-          agentDisabled: [],
-          effective: ["github"],
-        },
+        skillFilter: ["github"],
         version: 0,
       },
       isFastTestEnv: false,

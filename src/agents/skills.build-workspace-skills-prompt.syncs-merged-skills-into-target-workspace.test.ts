@@ -122,7 +122,7 @@ describe("buildWorkspaceSkillsPrompt", () => {
     expect(prompt).not.toContain("Extra version");
     expect(prompt.replaceAll("\\", "/")).toContain("demo-skill/SKILL.md");
   });
-  it("syncs the policy-visible subset even when hidden skills alias-collide", async () => {
+  it("syncs the explicit agent skill subset instead of inherited defaults", async () => {
     const sourceWorkspace = await createCaseDir("source");
     const targetWorkspace = await createCaseDir("target");
     await writeSkill({
@@ -142,13 +142,11 @@ describe("buildWorkspaceSkillsPrompt", () => {
         targetWorkspaceDir: targetWorkspace,
         agentId: "alpha",
         config: {
-          skills: {
-            policy: {
-              globalEnabled: ["foo_bar", "foo.dot"],
-              agentOverrides: {
-                alpha: { disabled: ["foo.dot"] },
-              },
+          agents: {
+            defaults: {
+              skills: ["foo_bar", "foo.dot"],
             },
+            list: [{ id: "alpha", skills: ["foo_bar"] }],
           },
         },
         bundledSkillsDir: path.join(sourceWorkspace, ".bundled"),

@@ -79,7 +79,6 @@ import {
 } from "./model-selection.js";
 import { buildWorkspaceSkillSnapshot } from "./skills.js";
 import { matchesSkillFilter } from "./skills/filter.js";
-import { matchesSkillPolicySnapshot, resolveSkillPolicySnapshot } from "./skills/policy.js";
 import { getSkillsSnapshotVersion, shouldRefreshSnapshotForVersion } from "./skills/refresh.js";
 import { normalizeSpawnedRunMetadata } from "./spawned-context.js";
 import { resolveAgentTimeoutMs } from "./timeout.js";
@@ -502,12 +501,10 @@ async function agentCommandInternal(
     const skillsSnapshotVersion = getSkillsSnapshotVersion(workspaceDir);
     const skillFilter = resolveAgentSkillsFilter(cfg, sessionAgentId);
     const currentSkillsSnapshot = sessionEntry?.skillsSnapshot;
-    const policySnapshot = resolveSkillPolicySnapshot(cfg, sessionAgentId);
     const shouldRefreshSkillsSnapshot =
       !currentSkillsSnapshot ||
       shouldRefreshSnapshotForVersion(currentSkillsSnapshot.version, skillsSnapshotVersion) ||
-      !matchesSkillFilter(currentSkillsSnapshot.skillFilter, skillFilter) ||
-      !matchesSkillPolicySnapshot(currentSkillsSnapshot.policy, policySnapshot);
+      !matchesSkillFilter(currentSkillsSnapshot.skillFilter, skillFilter);
     const needsSkillsSnapshot = isNewSession || shouldRefreshSkillsSnapshot;
     const skillsSnapshot = needsSkillsSnapshot
       ? buildWorkspaceSkillSnapshot(workspaceDir, {

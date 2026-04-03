@@ -45,18 +45,11 @@ describe("skills entries config schema", () => {
     ).toBe(true);
   });
 
-  it("accepts valid skills.policy agent overrides", () => {
+  it("accepts agents.defaults.skills", () => {
     const res = OpenClawSchema.safeParse({
       agents: {
-        list: [{ id: "writer" }, { id: "reviewer" }],
-      },
-      skills: {
-        policy: {
-          globalEnabled: ["github", "weather"],
-          agentOverrides: {
-            writer: { enabled: ["docs-search"] },
-            reviewer: { disabled: ["weather"] },
-          },
+        defaults: {
+          skills: ["github", "weather"],
         },
       },
     });
@@ -64,31 +57,38 @@ describe("skills entries config schema", () => {
     expect(res.success).toBe(true);
   });
 
-  it("accepts skills.policy override for the implicit main agent", () => {
+  it("accepts agents.list[].skills as explicit replacements", () => {
     const res = OpenClawSchema.safeParse({
-      skills: {
-        policy: {
-          agentOverrides: {
-            main: { enabled: ["docs-search"] },
-          },
+      agents: {
+        defaults: {
+          skills: ["github", "weather"],
         },
+        list: [{ id: "writer", skills: ["docs-search"] }],
       },
     });
 
     expect(res.success).toBe(true);
   });
 
-  it("rejects unknown skills.policy agent overrides", () => {
+  it("accepts explicit empty skills arrays for defaults and agents", () => {
     const res = OpenClawSchema.safeParse({
       agents: {
-        list: [{ id: "writer" }],
+        defaults: {
+          skills: [],
+        },
+        list: [{ id: "writer", skills: [] }],
       },
+    });
+
+    expect(res.success).toBe(true);
+  });
+
+  it("rejects legacy skills.policy config", () => {
+    const res = OpenClawSchema.safeParse({
       skills: {
         policy: {
-          agentOverrides: {
-            reviewer: { enabled: ["docs-search"] },
-          },
-        },
+          globalEnabled: ["github"],
+        } as never,
       },
     });
 
@@ -100,39 +100,7 @@ describe("skills entries config schema", () => {
     expect(
       res.error.issues.some(
         (issue) =>
-          issue.path.join(".") === "skills.policy.agentOverrides.reviewer" &&
-          issue.message.includes('Unknown agent id "reviewer"'),
-      ),
-    ).toBe(true);
-  });
-
-  it("rejects overlapping enabled and disabled skills for one agent override", () => {
-    const res = OpenClawSchema.safeParse({
-      agents: {
-        list: [{ id: "writer" }],
-      },
-      skills: {
-        policy: {
-          agentOverrides: {
-            writer: {
-              enabled: ["docs_search"],
-              disabled: ["docs.search"],
-            },
-          },
-        },
-      },
-    });
-
-    expect(res.success).toBe(false);
-    if (res.success) {
-      return;
-    }
-
-    expect(
-      res.error.issues.some(
-        (issue) =>
-          issue.path.join(".") === "skills.policy.agentOverrides.writer" &&
-          issue.message.includes("cannot be both enabled and disabled"),
+          issue.path.join(".") === "skills" && issue.message.toLowerCase().includes("unrecognized"),
       ),
     ).toBe(true);
   });

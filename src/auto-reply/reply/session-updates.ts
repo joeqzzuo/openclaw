@@ -4,10 +4,6 @@ import path from "node:path";
 import { buildWorkspaceSkillSnapshot } from "../../agents/skills.js";
 import { matchesSkillFilter } from "../../agents/skills/filter.js";
 import {
-  matchesSkillPolicySnapshot,
-  resolveSkillPolicySnapshot,
-} from "../../agents/skills/policy.js";
-import {
   ensureSkillsWatcher,
   getSkillsSnapshotVersion,
   shouldRefreshSnapshotForVersion,
@@ -88,12 +84,10 @@ export async function ensureSkillSnapshot(params: {
   const snapshotVersion = getSkillsSnapshotVersion(workspaceDir);
   const sessionAgentId = resolveAgentIdFromSessionKey(sessionKey);
   const existingSnapshot = nextEntry?.skillsSnapshot;
-  const policySnapshot = resolveSkillPolicySnapshot(cfg, sessionAgentId);
   ensureSkillsWatcher({ workspaceDir, config: cfg });
   const shouldRefreshSnapshot =
     shouldRefreshSnapshotForVersion(existingSnapshot?.version, snapshotVersion) ||
-    !matchesSkillFilter(existingSnapshot?.skillFilter, skillFilter) ||
-    !matchesSkillPolicySnapshot(existingSnapshot?.policy, policySnapshot);
+    !matchesSkillFilter(existingSnapshot?.skillFilter, skillFilter);
   const buildSnapshot = () =>
     buildWorkspaceSkillSnapshot(workspaceDir, {
       config: cfg,

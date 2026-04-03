@@ -8,18 +8,13 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { loadEnabledClaudeBundleCommands } from "../../plugins/bundle-commands.js";
 import { CONFIG_DIR, resolveUserPath } from "../../utils.js";
 import { resolveSandboxPath } from "../sandbox-paths.js";
+import { resolveEffectiveAgentSkillFilter } from "./agent-filter.js";
 import { resolveBundledSkillsDir } from "./bundled-dir.js";
 import { shouldIncludeSkill } from "./config.js";
 import { normalizeSkillFilter } from "./filter.js";
 import { resolveOpenClawMetadata, resolveSkillInvocationPolicy } from "./frontmatter.js";
 import { loadSkillsFromDirSafe, readSkillFrontmatterSafe } from "./local-loader.js";
 import { resolvePluginSkillDirs } from "./plugin-skills.js";
-import {
-  canonicalizeSkillAlias,
-  isSkillAllowedByPolicy,
-  resolveEffectiveSkillPolicy,
-  type EffectiveSkillPolicy,
-} from "./policy.js";
 import { serializeByKey } from "./serialize.js";
 import type {
   ParsedSkillFrontmatter,
@@ -70,19 +65,10 @@ function filterSkillEntries(
   config?: OpenClawConfig,
   skillFilter?: string[],
   eligibility?: SkillEligibilityContext,
-  agentId?: string,
 ): {
   entries: SkillEntry[];
-  policy?: EffectiveSkillPolicy;
 } {
-  const policy =
-    typeof agentId === "string" && agentId.trim().length > 0
-      ? resolveEffectiveSkillPolicy(config, agentId)
-      : undefined;
   let filtered = entries.filter((entry) => shouldIncludeSkill({ entry, config, eligibility }));
-  if (policy) {
-    filtered = filtered.filter((entry) => isSkillAllowedByPolicy(entry, policy));
-  }
   // If skillFilter is provided, only include skills in the filter list.
   if (skillFilter !== undefined) {
     const normalized = normalizeSkillFilter(skillFilter) ?? [];
@@ -96,77 +82,7 @@ function filterSkillEntries(
       `After skill filter: ${filtered.map((entry) => entry.skill.name).join(", ") || "(none)"}`,
     );
   }
-  if (config?.skills?.policy && typeof config.skills.policy === "object") {
-    assertNoCanonicalSkillAliasCollisions(filtered);
-  }
-  return { entries: filtered, policy };
-}
-
-type CanonicalSkillAliasOwner = {
-  skillName: string;
-  source: string;
-  filePath: string;
-  identifiers: Set<string>;
-};
-
-function assertNoCanonicalSkillAliasCollisions(entries: SkillEntry[]): void {
-  const ownersByAlias = new Map<string, Map<string, CanonicalSkillAliasOwner>>();
-  for (const entry of entries) {
-    const identifiers = new Set<string>([entry.skill.name]);
-    const skillKey = entry.metadata?.skillKey?.trim();
-    if (skillKey) {
-      identifiers.add(skillKey);
-    }
-    for (const identifier of identifiers) {
-      const alias = canonicalizeSkillAlias(identifier);
-      if (!alias) {
-        continue;
-      }
-      let owners = ownersByAlias.get(alias);
-      if (!owners) {
-        owners = new Map();
-        ownersByAlias.set(alias, owners);
-      }
-      let owner = owners.get(entry.skill.filePath);
-      if (!owner) {
-        owner = {
-          skillName: entry.skill.name,
-          source: entry.skill.source,
-          filePath: entry.skill.filePath,
-          identifiers: new Set<string>(),
-        };
-        owners.set(entry.skill.filePath, owner);
-      }
-      owner.identifiers.add(identifier);
-    }
-  }
-
-  const collisions: string[] = [];
-  for (const [alias, ownersByPath] of ownersByAlias.entries()) {
-    if (ownersByPath.size <= 1) {
-      continue;
-    }
-    const owners = [...ownersByPath.values()]
-      .sort((left, right) => {
-        const byName = left.skillName.localeCompare(right.skillName);
-        return byName !== 0 ? byName : left.filePath.localeCompare(right.filePath);
-      })
-      .map(
-        (owner) =>
-          `${owner.skillName} (${[...owner.identifiers].toSorted().join(", ")}) [${owner.source}] @ ${owner.filePath}`,
-      );
-    collisions.push(`"${alias}" => ${owners.join("; ")}`);
-  }
-
-  if (collisions.length === 0) {
-    return;
-  }
-
-  collisions.sort((left, right) => left.localeCompare(right));
-  throw new Error(
-    "Skill alias collision detected for skills.policy. Rename colliding skills or assign distinct openclaw.skillKey values.\n" +
-      collisions.map((line) => `- ${line}`).join("\n"),
-  );
+  return { entries: filtered };
 }
 
 const SKILL_COMMAND_MAX_LENGTH = 32;
@@ -703,11 +619,8 @@ export function buildWorkspaceSkillSnapshot(
   workspaceDir: string,
   opts?: WorkspaceSkillBuildOptions & { snapshotVersion?: number },
 ): SkillSnapshot {
-  const { eligible, prompt, resolvedSkills, policy } = resolveWorkspaceSkillPromptState(
-    workspaceDir,
-    opts,
-  );
-  const skillFilter = normalizeSkillFilter(opts?.skillFilter);
+  const { eligible, prompt, resolvedSkills } = resolveWorkspaceSkillPromptState(workspaceDir, opts);
+  const skillFilter = resolveEffectiveWorkspaceSkillFilter(opts);
   return {
     prompt,
     skills: eligible.map((entry) => ({
@@ -716,7 +629,6 @@ export function buildWorkspaceSkillSnapshot(
       requiredEnv: entry.metadata?.requires?.env?.slice(),
     })),
     ...(skillFilter === undefined ? {} : { skillFilter }),
-    ...(policy ? { policy } : {}),
     resolvedSkills,
     version: opts?.snapshotVersion,
   };
@@ -740,6 +652,18 @@ type WorkspaceSkillBuildOptions = {
   eligibility?: SkillEligibilityContext;
 };
 
+function resolveEffectiveWorkspaceSkillFilter(
+  opts?: WorkspaceSkillBuildOptions,
+): string[] | undefined {
+  if (opts?.skillFilter !== undefined) {
+    return normalizeSkillFilter(opts.skillFilter);
+  }
+  if (!opts?.config || !opts.agentId) {
+    return undefined;
+  }
+  return resolveEffectiveAgentSkillFilter(opts.config, opts.agentId);
+}
+
 function resolveWorkspaceSkillPromptState(
   workspaceDir: string,
   opts?: WorkspaceSkillBuildOptions,
@@ -747,15 +671,14 @@ function resolveWorkspaceSkillPromptState(
   eligible: SkillEntry[];
   prompt: string;
   resolvedSkills: Skill[];
-  policy?: SkillSnapshot["policy"];
 } {
   const skillEntries = opts?.entries ?? loadSkillEntries(workspaceDir, opts);
+  const effectiveSkillFilter = resolveEffectiveWorkspaceSkillFilter(opts);
   const filtered = filterSkillEntries(
     skillEntries,
     opts?.config,
-    opts?.skillFilter,
+    effectiveSkillFilter,
     opts?.eligibility,
-    opts?.agentId,
   );
   const eligible = filtered.entries;
   const promptEntries = eligible.filter(
@@ -784,16 +707,7 @@ function resolveWorkspaceSkillPromptState(
   ]
     .filter(Boolean)
     .join("\n");
-  const policy = filtered.policy
-    ? {
-        agentId: filtered.policy.agentId,
-        globalEnabled: filtered.policy.globalEnabled,
-        agentEnabled: filtered.policy.agentEnabled,
-        agentDisabled: filtered.policy.agentDisabled,
-        effective: filtered.policy.effective,
-      }
-    : undefined;
-  return { eligible, prompt, resolvedSkills, policy };
+  return { eligible, prompt, resolvedSkills };
 }
 
 export function resolveSkillsPromptForRun(params: {
@@ -824,16 +738,16 @@ export function loadWorkspaceSkillEntries(
     config?: OpenClawConfig;
     managedSkillsDir?: string;
     bundledSkillsDir?: string;
+    skillFilter?: string[];
     agentId?: string;
-    applyPolicy?: boolean;
   },
 ): SkillEntry[] {
   const entries = loadSkillEntries(workspaceDir, opts);
-  const policyAgentId = opts?.applyPolicy === false ? undefined : opts?.agentId;
-  if (!policyAgentId) {
+  const effectiveSkillFilter = resolveEffectiveWorkspaceSkillFilter(opts);
+  if (effectiveSkillFilter === undefined) {
     return entries;
   }
-  return filterSkillEntries(entries, opts?.config, undefined, undefined, policyAgentId).entries;
+  return filterSkillEntries(entries, opts?.config, effectiveSkillFilter, undefined).entries;
 }
 
 function resolveUniqueSyncedSkillDirName(base: string, used: Set<string>): string {
@@ -879,6 +793,7 @@ export async function syncSkillsToWorkspace(params: {
   sourceWorkspaceDir: string;
   targetWorkspaceDir: string;
   config?: OpenClawConfig;
+  skillFilter?: string[];
   agentId?: string;
   managedSkillsDir?: string;
   bundledSkillsDir?: string;
@@ -897,16 +812,17 @@ export async function syncSkillsToWorkspace(params: {
       managedSkillsDir: params.managedSkillsDir,
       bundledSkillsDir: params.bundledSkillsDir,
     });
-    const policy =
-      typeof params.agentId === "string" && params.agentId.trim().length > 0
-        ? resolveEffectiveSkillPolicy(params.config, params.agentId)
-        : undefined;
-    const entries = policy
-      ? rawEntries.filter((entry) => isSkillAllowedByPolicy(entry, policy))
-      : rawEntries;
-    if (params.config?.skills?.policy && typeof params.config.skills.policy === "object") {
-      assertNoCanonicalSkillAliasCollisions(entries);
-    }
+    const effectiveSkillFilter =
+      params.skillFilter ??
+      (params.config && params.agentId
+        ? resolveEffectiveAgentSkillFilter(params.config, params.agentId)
+        : undefined);
+    const entries = filterSkillEntries(
+      rawEntries,
+      params.config,
+      effectiveSkillFilter,
+      undefined,
+    ).entries;
 
     await fsp.rm(targetSkillsDir, { recursive: true, force: true });
     await fsp.mkdir(targetSkillsDir, { recursive: true });
@@ -949,7 +865,9 @@ export function filterWorkspaceSkillEntries(
   config?: OpenClawConfig,
   agentId?: string,
 ): SkillEntry[] {
-  return filterSkillEntries(entries, config, undefined, undefined, agentId).entries;
+  const skillFilter =
+    config && agentId ? resolveEffectiveAgentSkillFilter(config, agentId) : undefined;
+  return filterSkillEntries(entries, config, skillFilter, undefined).entries;
 }
 
 export function buildWorkspaceSkillCommandSpecs(
@@ -967,15 +885,11 @@ export function buildWorkspaceSkillCommandSpecs(
   },
 ): SkillCommandSpec[] {
   const skillEntries = opts?.entries ?? loadSkillEntries(workspaceDir, opts);
+  const effectiveSkillFilter = resolveEffectiveWorkspaceSkillFilter(opts);
   const eligible = opts?.skipFiltering
     ? skillEntries
-    : filterSkillEntries(
-        skillEntries,
-        opts?.config,
-        opts?.skillFilter,
-        opts?.eligibility,
-        opts?.agentId,
-      ).entries;
+    : filterSkillEntries(skillEntries, opts?.config, effectiveSkillFilter, opts?.eligibility)
+        .entries;
   const userInvocable = eligible.filter((entry) => entry.invocation?.userInvocable !== false);
   const used = new Set<string>();
   for (const reserved of opts?.reservedNames ?? []) {
