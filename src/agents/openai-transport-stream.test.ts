@@ -4,7 +4,9 @@ import {
   buildTransportAwareSimpleStreamFn,
   isTransportAwareApiSupported,
   prepareTransportAwareSimpleModel,
+  resolveAzureOpenAIApiVersion,
   resolveTransportAwareSimpleApi,
+  sanitizeTransportPayloadText,
 } from "./openai-transport-stream.js";
 import { attachModelProviderRequestTransport } from "./provider-request-config.js";
 
@@ -47,5 +49,21 @@ describe("openai transport stream", () => {
       id: "gpt-5",
     });
     expect(buildTransportAwareSimpleStreamFn(model)).toBeTypeOf("function");
+  });
+
+  it("removes unpaired surrogate code units but preserves valid surrogate pairs", () => {
+    const high = String.fromCharCode(0xd83d);
+    const low = String.fromCharCode(0xdc00);
+
+    expect(sanitizeTransportPayloadText(`left${high}right`)).toBe("leftright");
+    expect(sanitizeTransportPayloadText(`left${low}right`)).toBe("leftright");
+    expect(sanitizeTransportPayloadText("emoji 🙈 ok")).toBe("emoji 🙈 ok");
+  });
+
+  it("uses a valid Azure API version default when the environment is unset", () => {
+    expect(resolveAzureOpenAIApiVersion({})).toBe("2024-12-01-preview");
+    expect(resolveAzureOpenAIApiVersion({ AZURE_OPENAI_API_VERSION: "2025-01-01-preview" })).toBe(
+      "2025-01-01-preview",
+    );
   });
 });

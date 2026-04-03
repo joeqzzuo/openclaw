@@ -19,6 +19,8 @@ import {
   resolveProviderRequestPolicyConfig,
 } from "./provider-request-config.js";
 
+const DEFAULT_AZURE_OPENAI_API_VERSION = "2024-12-01-preview";
+
 const SUPPORTED_TRANSPORT_APIS = new Set<Api>([
   "openai-responses",
   "openai-completions",
@@ -86,8 +88,11 @@ type MutableAssistantOutput = {
   errorMessage?: string;
 };
 
-function sanitizeSurrogates(text: string): string {
-  return text;
+export function sanitizeTransportPayloadText(text: string): string {
+  return text.replace(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+    "",
+  );
 }
 
 function stringifyUnknown(value: unknown, fallback = ""): string {
@@ -111,6 +116,37 @@ function stringifyJsonLike(value: unknown, fallback = ""): string {
     return String(value);
   }
   return fallback;
+}
+
+function getServiceTierCostMultiplier(serviceTier: ResponseCreateParamsStreaming["service_tier"]) {
+  switch (serviceTier) {
+    case "flex":
+      return 0.5;
+    case "priority":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function applyServiceTierPricing(
+  usage: MutableAssistantOutput["usage"],
+  serviceTier?: ResponseCreateParamsStreaming["service_tier"],
+): void {
+  const multiplier = getServiceTierCostMultiplier(serviceTier);
+  if (multiplier === 1) {
+    return;
+  }
+  usage.cost.input *= multiplier;
+  usage.cost.output *= multiplier;
+  usage.cost.cacheRead *= multiplier;
+  usage.cost.cacheWrite *= multiplier;
+  usage.cost.total =
+    usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
+}
+
+export function resolveAzureOpenAIApiVersion(env = process.env): string {
+  return env.AZURE_OPENAI_API_VERSION?.trim() || DEFAULT_AZURE_OPENAI_API_VERSION;
 }
 
 function shortHash(value: string): string {
@@ -347,7 +383,7 @@ function convertResponsesMessages(
   if (includeSystemPrompt && context.systemPrompt) {
     messages.push({
       role: model.reasoning ? "developer" : "system",
-      content: sanitizeSurrogates(context.systemPrompt),
+      content: sanitizeTransportPayloadText(context.systemPrompt),
     });
   }
   let msgIndex = 0;
@@ -356,13 +392,13 @@ function convertResponsesMessages(
       if (typeof msg.content === "string") {
         messages.push({
           role: "user",
-          content: [{ type: "input_text", text: sanitizeSurrogates(msg.content) }],
+          content: [{ type: "input_text", text: sanitizeTransportPayloadText(msg.content) }],
         });
       } else {
         const content = msg.content
           .map((item) =>
             item.type === "text"
-              ? { type: "input_text", text: sanitizeSurrogates(item.text) }
+              ? { type: "input_text", text: sanitizeTransportPayloadText(item.text) }
               : {
                   type: "input_image",
                   detail: "auto",
@@ -392,7 +428,11 @@ function convertResponsesMessages(
             type: "message",
             role: "assistant",
             content: [
-              { type: "output_text", text: sanitizeSurrogates(block.text), annotations: [] },
+              {
+                type: "output_text",
+                text: sanitizeTransportPayloadText(block.text),
+                annotations: [],
+              },
             ],
             status: "completed",
             id: msgId,
@@ -427,7 +467,7 @@ function convertResponsesMessages(
           hasImages && model.input.includes("image")
             ? [
                 ...(textResult
-                  ? [{ type: "input_text", text: sanitizeSurrogates(textResult) }]
+                  ? [{ type: "input_text", text: sanitizeTransportPayloadText(textResult) }]
                   : []),
                 ...msg.content
                   .filter((item) => item.type === "image")
@@ -437,7 +477,7 @@ function convertResponsesMessages(
                     image_url: `data:${item.mimeType};base64,${item.data}`,
                   })),
               ]
-            : sanitizeSurrogates(textResult || "(see attached image)"),
+            : sanitizeTransportPayloadText(textResult || "(see attached image)"),
       });
     }
     msgIndex += 1;
@@ -774,11 +814,9 @@ function buildGuardedModelFetch(model: Model<Api>): typeof fetch {
         ? input.toString()
         : typeof input === "string"
           ? input
-          : input instanceof Request
-            ? input.url
-            : (() => {
-                throw new Error("Unsupported fetch input for transport-aware model request");
-              })());
+          : (() => {
+              throw new Error("Unsupported fetch input for transport-aware model request");
+            })());
     const requestInit =
       request &&
       ({
@@ -872,6 +910,7 @@ function createOpenAIResponsesTransportStreamFn(): StreamFn {
         stream.push({ type: "start", partial: output as never });
         await processResponsesStream(responseStream, output, stream, model, {
           serviceTier: (options as OpenAIResponsesOptions | undefined)?.serviceTier,
+          applyServiceTierPricing,
         });
         if (options?.signal?.aborted) {
           throw new Error("Request was aborted");
@@ -1043,7 +1082,7 @@ function createAzureOpenAIClient(
 ) {
   return new AzureOpenAI({
     apiKey,
-    apiVersion: process.env.AZURE_OPENAI_API_VERSION?.trim() || "v1",
+    apiVersion: resolveAzureOpenAIApiVersion(),
     dangerouslyAllowBrowser: true,
     defaultHeaders: buildOpenAIClientHeaders(model, context, optionHeaders),
     baseURL: normalizeAzureBaseUrl(model.baseUrl),
@@ -1125,6 +1164,9 @@ function createOpenAICompletionsTransportStreamFn(): StreamFn {
         })) as unknown as AsyncIterable<ChatCompletionChunk>;
         stream.push({ type: "start", partial: output as never });
         await processOpenAICompletionsStream(responseStream, output, model, stream);
+        if (options?.signal?.aborted) {
+          throw new Error("Request was aborted");
+        }
         stream.push({ type: "done", reason: output.stopReason as never, message: output as never });
         stream.end();
       } catch (error) {
