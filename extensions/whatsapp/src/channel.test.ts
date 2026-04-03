@@ -191,6 +191,13 @@ describe("whatsappPlugin outbound sendMedia", () => {
       messageId: "msg-1",
       toJid: "15551234567@s.whatsapp.net",
     }));
+    const cfg = {
+      channels: {
+        whatsapp: {
+          replyToMode: "first",
+        },
+      },
+    } as unknown as OpenClawConfig;
 
     const outbound = whatsappPlugin.outbound;
     if (!outbound?.sendText) {
@@ -198,7 +205,7 @@ describe("whatsappPlugin outbound sendMedia", () => {
     }
 
     await outbound.sendText({
-      cfg: {} as never,
+      cfg,
       to: "whatsapp:+15551234567",
       text: "reply",
       replyToId: "quoted-1",
@@ -221,10 +228,10 @@ describe("whatsappPlugin outbound sendMedia", () => {
     );
   });
 
-  it("forwards replyToParticipant as quotedMessageKey participant on group sends", async () => {
+  it("ignores replyToId on outbound sends when replyToMode is off", async () => {
     const sendWhatsApp = vi.fn(async () => ({
       messageId: "msg-1",
-      toJid: "120363000000000000@g.us",
+      toJid: "15551234567@s.whatsapp.net",
     }));
 
     const outbound = whatsappPlugin.outbound;
@@ -232,8 +239,52 @@ describe("whatsappPlugin outbound sendMedia", () => {
       throw new Error("whatsapp outbound sendText is unavailable");
     }
 
+    const cfg = {
+      channels: {
+        whatsapp: {
+          replyToMode: "off",
+        },
+      },
+    } as unknown as OpenClawConfig;
+
     await outbound.sendText({
-      cfg: {} as never,
+      cfg,
+      to: "whatsapp:+15551234567",
+      text: "reply",
+      replyToId: "quoted-1",
+      accountId: "default",
+      deps: { sendWhatsApp },
+    });
+
+    expect(sendWhatsApp).toHaveBeenCalledWith(
+      "whatsapp:+15551234567",
+      "reply",
+      expect.not.objectContaining({
+        quotedMessageKey: expect.anything(),
+      }),
+    );
+  });
+
+  it("forwards replyToParticipant as quotedMessageKey participant on group sends", async () => {
+    const sendWhatsApp = vi.fn(async () => ({
+      messageId: "msg-1",
+      toJid: "120363000000000000@g.us",
+    }));
+    const cfg = {
+      channels: {
+        whatsapp: {
+          replyToMode: "first",
+        },
+      },
+    } as unknown as OpenClawConfig;
+
+    const outbound = whatsappPlugin.outbound;
+    if (!outbound?.sendText) {
+      throw new Error("whatsapp outbound sendText is unavailable");
+    }
+
+    await outbound.sendText({
+      cfg,
       to: "120363000000000000@g.us",
       text: "reply",
       replyToId: "quoted-1",
