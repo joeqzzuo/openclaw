@@ -1158,7 +1158,7 @@ export function attachGatewayWsMessageHandler(params: {
                 scopes: deviceToken.scopes,
                 issuedAtMs: deviceToken.rotatedAtMs ?? deviceToken.createdAtMs,
                 ...(bootstrapDeviceTokens.length > 1
-                  ? { deviceTokens: bootstrapDeviceTokens }
+                  ? { deviceTokens: bootstrapDeviceTokens.slice(1) }
                   : {}),
               }
             : undefined,

@@ -766,6 +766,9 @@ export function registerControlUiAndPairingSuite(): void {
       expect(issuedOperatorToken).toBeDefined();
       expect(initialPayload?.auth?.role).toBe("node");
       expect(initialPayload?.auth?.scopes ?? []).toEqual([]);
+      expect(initialPayload?.auth?.deviceTokens?.some((entry) => entry.role === "node")).toBe(
+        false,
+      );
       expect(
         initialPayload?.auth?.deviceTokens?.find((entry) => entry.role === "operator")?.scopes,
       ).toEqual(
