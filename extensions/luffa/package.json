@@ -1,0 +1,26 @@
+{
+  "name": "@openclaw/luffa",
+  "version": "2026.4.3",
+  "description": "Luffa IM channel plugin for OpenClaw",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "luffa",
+      "label": "Luffa",
+      "selectionLabel": "Luffa (Bot API)",
+      "docsPath": "/channels/luffa",
+      "docsLabel": "luffa",
+      "blurb": "Connect Luffa IM to OpenClaw via the bot HTTP API.",
+      "order": 91
+    },
+    "install": {
+      "npmSpec": "@openclaw/luffa",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.4.1"
+    }
+  }
+}

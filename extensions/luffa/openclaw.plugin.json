@@ -1,0 +1,9 @@
+{
+  "id": "luffa",
+  "channels": ["luffa"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

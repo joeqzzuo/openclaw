@@ -502,7 +502,12 @@ run_prestart_gateway --user root --entrypoint sh openclaw-gateway -c \
    [ -d /home/node/.openclaw/workspace/.openclaw ] && chown -R node:node /home/node/.openclaw/workspace/.openclaw || true'
 
 echo ""
-echo "==> Onboarding (interactive)"
+ONBOARD_EXTRA_FLAGS="${OPENCLAW_ONBOARD_FLAGS:-}"
+if [[ -n "$ONBOARD_EXTRA_FLAGS" ]]; then
+  echo "==> Onboarding (non-interactive)"
+else
+  echo "==> Onboarding (interactive)"
+fi
 echo "Docker setup pins Gateway mode to local."
 echo "Gateway runtime bind comes from OPENCLAW_GATEWAY_BIND (default: lan)."
 echo "Current runtime bind: $OPENCLAW_GATEWAY_BIND"
@@ -510,7 +515,8 @@ echo "Gateway token: $OPENCLAW_GATEWAY_TOKEN"
 echo "Tailscale exposure: Off (use host-level tailnet/Tailscale setup separately)."
 echo "Install Gateway daemon: No (managed by Docker Compose)"
 echo ""
-run_prestart_cli onboard --mode local --no-install-daemon
+# shellcheck disable=SC2086
+run_prestart_cli onboard --mode local --no-install-daemon $ONBOARD_EXTRA_FLAGS
 
 echo ""
 echo "==> Docker gateway defaults"
