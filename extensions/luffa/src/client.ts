@@ -9,7 +9,7 @@
 
 import type { LuffaParsedMessage, LuffaReceivedMessage, ResolvedLuffaAccount } from "./types.js";
 
-const REQUEST_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 // Track seen msgIds to deduplicate across polls.
 const seenMsgIds = new Set<string>();
@@ -44,10 +44,16 @@ async function postJson(url: string, body: Record<string, unknown>): Promise<unk
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+    const text = await res.text().catch(() => "");
     if (!res.ok) {
-      throw new Error(`Luffa API ${res.status}: ${await res.text().catch(() => "")}`);
+      throw new Error(`Luffa API ${res.status}: ${text}`);
     }
-    return await res.json();
+    try {
+      return JSON.parse(text);
+    } catch {
+      // Luffa API may return empty body or non-JSON on success.
+      return text;
+    }
   } finally {
     clearTimeout(timeout);
   }
@@ -81,16 +87,17 @@ export async function sendDm(
   account: ResolvedLuffaAccount,
   uid: string,
   text: string,
+  log?: { info?: (...args: unknown[]) => void; error?: (...args: unknown[]) => void },
 ): Promise<boolean> {
   const url = `${account.apiBaseUrl}/robot/send`;
+  const body = { secret: account.secret, uid, msg: JSON.stringify({ text }) };
+  log?.info?.(`[luffa] sendDm url=${url} uid=${uid} textLen=${text.length}`);
   try {
-    await postJson(url, {
-      secret: account.secret,
-      uid,
-      msg: JSON.stringify({ text }),
-    });
+    const result = await postJson(url, body);
+    log?.info?.(`[luffa] sendDm ok: ${JSON.stringify(result)}`);
     return true;
-  } catch {
+  } catch (err) {
+    log?.error?.(`[luffa] sendDm failed: ${err instanceof Error ? err.message : err}`);
     return false;
   }
 }
@@ -102,17 +109,17 @@ export async function sendGroup(
   account: ResolvedLuffaAccount,
   uid: string,
   text: string,
+  log?: { info?: (...args: unknown[]) => void; error?: (...args: unknown[]) => void },
 ): Promise<boolean> {
   const url = `${account.apiBaseUrl}/robot/sendGroup`;
+  const body = { secret: account.secret, uid, msg: JSON.stringify({ text }), type: "1" };
+  log?.info?.(`[luffa] sendGroup url=${url} uid=${uid} textLen=${text.length}`);
   try {
-    await postJson(url, {
-      secret: account.secret,
-      uid,
-      msg: JSON.stringify({ text }),
-      type: "1",
-    });
+    const result = await postJson(url, body);
+    log?.info?.(`[luffa] sendGroup ok: ${JSON.stringify(result)}`);
     return true;
-  } catch {
+  } catch (err) {
+    log?.error?.(`[luffa] sendGroup failed: ${err instanceof Error ? err.message : err}`);
     return false;
   }
 }

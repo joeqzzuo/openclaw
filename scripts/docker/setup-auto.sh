@@ -30,7 +30,7 @@ AUTH_CHOICE="${AUTH_CHOICE:-custom-api-key}"
 AUTH_FLAG=""
 case "$AUTH_CHOICE" in
   custom-api-key)
-    CUSTOM_BASE_URL="${CUSTOM_BASE_URL:-http://45.78.192.243:8001/v1}"
+    CUSTOM_BASE_URL="${CUSTOM_BASE_URL:-http://45.78.192.243:8000/v1}"
     CUSTOM_MODEL_ID="${CUSTOM_MODEL_ID:-Qwen/Qwen3.5-9B}"
     # vLLM and similar endpoints often don't need a real key, but OpenClaw
     # requires one to be configured. Use a placeholder when none is provided.
@@ -61,9 +61,9 @@ case "$AUTH_CHOICE" in
     ;;
 esac
 
-# Always skip channels (we configure luffa manually below), health, and other
-# optional interactive steps.
-SKIP_FLAGS="--skip-channels --skip-skills --skip-search --skip-health --skip-ui"
+# Skip channels (we configure luffa manually below), health check, and UI prompts.
+# Keep skills and search enabled so built-in tools are available.
+SKIP_FLAGS="--skip-channels --skip-health --skip-ui"
 
 export OPENCLAW_ONBOARD_FLAGS="--non-interactive --accept-risk --auth-choice $AUTH_CHOICE $AUTH_FLAG $SKIP_FLAGS"
 
@@ -95,6 +95,39 @@ JSONEOF
     --entrypoint node openclaw-gateway \
     dist/index.js config set channels "$LUFFA_CONFIG" --strict-json
 fi
+
+# --- Enable all built-in plugins that work without API keys ---
+FREE_PLUGINS=(duckduckgo browser openshell memory-core diffs llm-task)
+echo ""
+echo "==> Enabling built-in plugins: ${FREE_PLUGINS[*]}"
+for plugin in "${FREE_PLUGINS[@]}"; do
+  docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm --no-deps \
+    --entrypoint node openclaw-gateway \
+    dist/index.js config set "plugins.entries.${plugin}.enabled" true 2>/dev/null || true
+done
+
+# --- Enable web search tool with DuckDuckGo ---
+echo ""
+echo "==> Enabling web search (DuckDuckGo)"
+docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm --no-deps \
+  --entrypoint node openclaw-gateway \
+  dist/index.js config set tools.web.search.enabled true
+docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm --no-deps \
+  --entrypoint node openclaw-gateway \
+  dist/index.js config set tools.web.search.provider duckduckgo
+
+# --- Configure model context window to match vLLM --max-model-len ---
+CONTEXT_WINDOW="${OPENCLAW_CONTEXT_WINDOW:-131072}"
+MAX_TOKENS="${OPENCLAW_MAX_TOKENS:-4096}"
+echo ""
+echo "==> Setting model context window=${CONTEXT_WINDOW}, maxTokens=${MAX_TOKENS}"
+MODEL_CONFIG="$(printf '[{"id":"%s","name":"%s","contextWindow":%s,"maxTokens":%s,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"reasoning":false}]' \
+  "$CUSTOM_MODEL_ID" "$CUSTOM_MODEL_ID" "$CONTEXT_WINDOW" "$MAX_TOKENS")"
+# Derive provider key from base URL (same logic OpenClaw uses for custom providers).
+PROVIDER_KEY="$(echo "$CUSTOM_BASE_URL" | sed 's|https\?://||;s|/.*||;s|[^a-z0-9]|-|g;s|^|custom-|')"
+docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm --no-deps \
+  --entrypoint node openclaw-gateway \
+  dist/index.js config set "models.providers.${PROVIDER_KEY}.models" "$MODEL_CONFIG" --strict-json
 
 if [[ -n "$GATEWAY_HOST" ]]; then
   ALLOWED_ORIGINS="$(printf '["http://localhost:%s","http://127.0.0.1:%s","http://%s:%s"]' \

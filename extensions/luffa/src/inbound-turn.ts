@@ -39,7 +39,7 @@ function resolveLuffaInboundRoute(params: {
 export async function dispatchLuffaInboundTurn(params: {
   account: ResolvedLuffaAccount;
   msg: LuffaInboundMessage;
-  log?: { info?: (...args: unknown[]) => void };
+  log?: { info?: (...args: unknown[]) => void; warn?: (...args: unknown[]) => void; error?: (...args: unknown[]) => void };
 }): Promise<null> {
   const rt = getLuffaRuntime();
   const currentCfg = await rt.config.loadConfig();
@@ -62,11 +62,23 @@ export async function dispatchLuffaInboundTurn(params: {
     dispatcherOptions: {
       deliver: async (payload: { text?: string; body?: string }) => {
         const text = payload.text ?? payload.body;
-        if (!text) return;
-        if (params.msg.chatType === "group" && params.msg.groupId) {
-          await sendGroup(params.account, params.msg.groupId, text);
-        } else {
-          await sendDm(params.account, params.msg.from, text);
+        if (!text?.trim()) {
+          params.log?.warn?.(`[luffa] deliver called with empty payload for ${params.msg.from}`);
+          return;
+        }
+        params.log?.info?.(`[luffa] delivering reply to ${params.msg.from}: ${text.slice(0, 80)}`);
+        try {
+          let ok: boolean;
+          if (params.msg.chatType === "group" && params.msg.groupId) {
+            ok = await sendGroup(params.account, params.msg.groupId, text, params.log);
+          } else {
+            ok = await sendDm(params.account, params.msg.from, text, params.log);
+          }
+          if (!ok) {
+            params.log?.error?.(`[luffa] send failed for ${params.msg.from}`);
+          }
+        } catch (err) {
+          params.log?.error?.(`[luffa] send error: ${err instanceof Error ? err.message : err}`);
         }
       },
       onReplyStart: () => {
